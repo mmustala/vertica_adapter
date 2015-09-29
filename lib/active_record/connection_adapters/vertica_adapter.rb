@@ -87,6 +87,7 @@ module ActiveRecord
         super(connection)
         @connection_options, @config = connection_options, config
         @quoted_column_names, @quoted_table_names = {}, {}
+        @visitor = Arel::Visitors::ToSql.new self
         # connect
       end
 
@@ -141,7 +142,9 @@ module ActiveRecord
         sql = "SELECT * FROM columns WHERE table_name = #{quote_column_name(table_name)} AND table_schema = #{quote_column_name(schema_name)}"
 
         columns = []
-        execute(sql, name){ |field| columns << VerticaColumn.new(field[:column_name],field[:column_default],field[:data_type],field[:is_nullable])}
+        execute(sql, name) do |field|
+          columns << VerticaColumn.new(field[:column_name],field[:column_default],lookup_cast_type(field[:data_type]),field[:is_nullable])
+        end
         columns
       end
 
@@ -150,7 +153,7 @@ module ActiveRecord
         @connection = ::Vertica.connect(@connection.options)
         @connection.query(sql) {|row| rows << row }
         @connection.close
-        rows
+        to_result(rows)
       end
 
       def primary_key(table)
@@ -168,6 +171,10 @@ module ActiveRecord
         else
           "#{schema_name}.#{name}"
         end
+      end
+
+      def to_result(rows)
+        ActiveRecord::Result.new(rows.first.stringify_keys.keys, rows.map {|r| r.values})
       end
       
     end  
